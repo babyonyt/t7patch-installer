@@ -13,6 +13,8 @@ iex (iwr 'https://raw.githubusercontent.com/babyonyt/t7patch-installer/main/inst
 function Ensure-Admin {
     $current = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $current.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
+        Clear-Host  # <-- clears the console
+
         Write-Host ""
         Write-Host "⚠️  This script must be run as Administrator." -ForegroundColor Yellow
         Write-Host ""

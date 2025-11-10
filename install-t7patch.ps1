@@ -3,8 +3,8 @@ install-t7patch.ps1
 - Downloads the t7patch zip,
 - extracts into "%UserProfile%\Desktop\T7Patch",
 - creates a desktop shortcut to t7patch_2.04.exe (if found),
+- removes old T7Patch folders in common locations,
 - adds Microsoft Defender exclusion for the whole folder (removes old exe exclusions),
-- checks for existing installation and prompts for update,
 - cleans up temporary files.
 
 Usage:
@@ -41,6 +41,12 @@ $desktop = [Environment]::GetFolderPath('Desktop')
 $targetFolder = Join-Path $desktop 'T7Patch'
 $shortcutName = 'T7Patch.lnk'
 $exeNameWanted = 't7patch_2.04.exe'
+$searchPaths = @(
+    [Environment]::GetFolderPath("Desktop"),
+    [Environment]::GetFolderPath("MyDocuments"),
+    "$env:ProgramFiles",
+    "$env:ProgramFiles(x86)"
+)
 # ----------------
 
 $prevProgress = $Global:ProgressPreference
@@ -54,18 +60,20 @@ try {
     Write-Host "===============================" -ForegroundColor Cyan
     Write-Host ""
 
-    # --- Check for existing installation ---
-    $existing = Get-ChildItem -Path $desktop -Directory | Where-Object { $_.Name -ieq 'T7Patch' }
-    if ($existing) {
-        Write-Host "⚠️  Existing T7Patch folder found at: $($existing.FullName)" -ForegroundColor Yellow
-        $response = Read-Host "Do you want to replace it with the latest version? (Y/N)"
-        if ($response.Trim().ToUpper() -eq 'Y') {
-            Write-Host "Removing old version..."
-            Remove-Item -LiteralPath $existing.FullName -Recurse -Force -ErrorAction Stop
-        } else {
-            Write-Host "Keeping existing version. Exiting installer..."
-            Pause
-            exit
+    # --- Remove old T7Patch folders in common locations ---
+    foreach ($path in $searchPaths) {
+        if (Test-Path $path) {
+            $existing = Get-ChildItem -Path $path -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -ieq 'T7Patch' }
+            foreach ($folder in $existing) {
+                Write-Host "⚠️  Found old T7Patch folder: $($folder.FullName)" -ForegroundColor Yellow
+                $response = Read-Host "Do you want to remove it? (Y/N)"
+                if ($response.Trim().ToUpper() -eq 'Y') {
+                    Write-Host "Removing folder: $($folder.FullName)"
+                    Remove-Item -LiteralPath $folder.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                } else {
+                    Write-Host "Keeping folder: $($folder.FullName)"
+                }
+            }
         }
     }
 
@@ -113,7 +121,6 @@ try {
         # --- Defender exclusion (folder only, remove old exe exclusions first) ---
         Write-Host "Configuring Microsoft Defender exclusions..."
         try {
-            # Remove old T7Patch exe exclusions if present
             $existingExe = Get-MpPreference | Select-Object -ExpandProperty ExclusionProcess
             foreach ($proc in $existingExe) {
                 if ($proc -like "*t7patch*.exe") {
@@ -122,7 +129,6 @@ try {
                 }
             }
 
-            # Add folder-only exclusion
             Add-MpPreference -ExclusionPath $targetFolder -ErrorAction Stop
             Write-Host "Added folder exclusion: $targetFolder"
         } catch {

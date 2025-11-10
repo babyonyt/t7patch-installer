@@ -1,7 +1,12 @@
 <# 
 install-t7patch.ps1
-- Downloads and installs T7Patch automatically.
-- Extracts to Desktop, creates a shortcut, and adds Defender exclusions.
+- Downloads the t7patch zip,
+- extracts into "%UserProfile%\Desktop\T7Patch",
+- creates a desktop shortcut to t7patch_2.04.exe (if found),
+- adds Microsoft Defender exclusions for the folder and the exe,
+- cleans up temporary files.
+
+Run: Just run normally — it will auto-elevate if not admin.
 #>
 
 function Ensure-Admin {
@@ -9,17 +14,9 @@ function Ensure-Admin {
     if (-not $current.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
         Write-Host "Requesting Administrator access..."
         $ps = (Get-Command powershell).Source
-
-        # Save temporary copy if script isn’t from a file (like run via web)
-        $scriptPath = $MyInvocation.MyCommand.Path
-        if (-not $scriptPath -or -not (Test-Path $scriptPath)) {
-            $tempPath = Join-Path $env:TEMP 'install-t7patch_elevated.ps1'
-            Set-Content -Path $tempPath -Value (Get-Content -Raw -Path $MyInvocation.MyCommand.Definition)
-            $scriptPath = $tempPath
-        }
-
-        # Relaunch with admin rights and keep window open (-NoExit)
-        Start-Process -FilePath $ps -ArgumentList "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`"" -Verb RunAs
+        $script = $MyInvocation.MyCommand.Definition
+        # Relaunch as admin and keep window open
+        Start-Process -FilePath $ps -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$script`"; Pause" -Verb RunAs
         exit
     }
 }
@@ -40,15 +37,13 @@ $prevProgress = $Global:ProgressPreference
 $Global:ProgressPreference = 'SilentlyContinue'
 
 try {
-    Write-Host "`n--- T7Patch Installer ---`n"
-
-    Write-Host "Downloading T7Patch..."
+    Write-Host "Downloading: $url"
     Invoke-WebRequest -Uri $url -OutFile $tempZip -UseBasicParsing -ErrorAction Stop
 
     if (Test-Path $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force -ErrorAction SilentlyContinue }
     New-Item -ItemType Directory -Path $tempExtract | Out-Null
 
-    Write-Host "Extracting files..."
+    Write-Host "Extracting to temporary folder..."
     Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force -ErrorAction Stop
 
     $items = Get-ChildItem -LiteralPath $tempExtract
@@ -59,11 +54,11 @@ try {
     }
 
     if (Test-Path $targetFolder) {
-        Write-Host "Existing T7Patch folder found — replacing it..."
+        Write-Host "Existing target folder found at $targetFolder — replacing..."
         Remove-Item -LiteralPath $targetFolder -Recurse -Force -ErrorAction Stop
     }
 
-    Write-Host "Moving files to Desktop folder..."
+    Write-Host "Moving files to Desktop folder: $targetFolder"
     Move-Item -LiteralPath $sourcePath -Destination $targetFolder -Force -ErrorAction Stop
 
     $exePath = Get-ChildItem -LiteralPath $targetFolder -Filter $exeNameWanted -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -88,33 +83,31 @@ try {
         Write-Host "Adding Microsoft Defender exclusions..."
         try {
             Add-MpPreference -ExclusionPath $targetFolder -ErrorAction Stop
-            Write-Host "Folder exclusion added."
+            Write-Host "Added folder exclusion."
         } catch {
-            Write-Warning "Failed to add folder exclusion: $_"
+            Write-Warning "Could not add folder exclusion: $_"
         }
 
         try {
             Add-MpPreference -ExclusionProcess $exeFull -ErrorAction Stop
-            Write-Host "Process exclusion added."
+            Write-Host "Added process exclusion."
         } catch {
-            Write-Warning "Failed to add process exclusion: $_"
+            Write-Warning "Could not add process exclusion: $_"
         }
     } else {
-        Write-Warning "No executable found in extracted files. Folder created at: $targetFolder"
+        Write-Warning "No executable found in extracted files."
     }
 
     if (Test-Path $tempZip) { Remove-Item -LiteralPath $tempZip -Force -ErrorAction SilentlyContinue }
     if (Test-Path $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force -ErrorAction SilentlyContinue }
 
-    Write-Host "`n✅ Done! T7Patch installed to: $targetFolder"
-    Write-Host "You can now run it from the shortcut on your Desktop."
-    Write-Host "`nPress any key to close..."
-    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    Write-Host "`nDone! Folder created at: $targetFolder"
+    if ($exePath) { Write-Host "Shortcut added on Desktop — you can now run T7Patch." }
+    Pause
 }
 catch {
-    Write-Error "❌ Error: $_"
-    Write-Host "`nPress any key to close..."
-    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    Write-Error "Error: $_"
+    Pause
 }
 finally {
     $Global:ProgressPreference = $prevProgress

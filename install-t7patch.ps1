@@ -1,12 +1,6 @@
 <# 
 install-t7patch.ps1
-- Downloads the T7Patch zip
-- Extracts into "%UserProfile%\Desktop\T7Patch"
-- Creates a desktop shortcut to t7patch_2.04.exe (if found)
-- Adds Microsoft Defender exclusions for the folder and exe
-- Cleans up temporary files
-
-Run: Right-click → Run with PowerShell
+- Downloads and installs T7Patch automatically.
 #>
 
 function Ensure-Admin {
@@ -14,13 +8,17 @@ function Ensure-Admin {
     if (-not $current.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
         Write-Host "Requesting Administrator access..."
         $ps = (Get-Command powershell).Source
+
+        # --- Create a temporary copy if script was not saved locally ---
         $scriptPath = $MyInvocation.MyCommand.Path
-        if (-not $scriptPath) {
-            Write-Host "Please run this script by right-clicking and selecting 'Run with PowerShell'."
-            exit
+        if (-not $scriptPath -or -not (Test-Path $scriptPath)) {
+            $tempPath = Join-Path $env:TEMP 'install-t7patch_elevated.ps1'
+            Set-Content -Path $tempPath -Value (Get-Content -Raw -Path $MyInvocation.MyCommand.Definition)
+            $scriptPath = $tempPath
         }
-        # Relaunch elevated and exit this instance
-        Start-Process -FilePath $ps -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`"" -Verb RunAs
+
+        # Relaunch as admin and pause at end
+        Start-Process -FilePath $ps -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" ; pause" -Verb RunAs
         exit
     }
 }
@@ -105,11 +103,14 @@ try {
     if (Test-Path $tempZip) { Remove-Item -LiteralPath $tempZip -Force -ErrorAction SilentlyContinue }
     if (Test-Path $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force -ErrorAction SilentlyContinue }
 
-    Write-Host "✅ Done. Folder: $targetFolder"
+    Write-Host "`n✅ Done. Folder: $targetFolder"
     if ($exePath) { Write-Host "Shortcut created on your desktop — you can run it to start T7Patch." }
+    Write-Host "`nPress Enter to close..."
+    Read-Host
 }
 catch {
     Write-Error "❌ Error: $_"
+    Read-Host "`nPress Enter to close..."
 }
 finally {
     $Global:ProgressPreference = $prevProgress

@@ -4,6 +4,7 @@ install-t7patch.ps1
 - extracts into "%UserProfile%\Desktop\T7Patch",
 - creates a desktop shortcut to t7patch_2.04.exe (if found),
 - adds Microsoft Defender exclusions for the folder and the exe,
+- checks for existing installation and prompts for update,
 - cleans up temporary files.
 
 Usage:
@@ -13,8 +14,7 @@ iex (iwr 'https://raw.githubusercontent.com/babyonyt/t7patch-installer/main/inst
 function Ensure-Admin {
     $current = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $current.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
-        Clear-Host  # <-- clears the console
-
+        Clear-Host
         Write-Host ""
         Write-Host "⚠️  This script must be run as Administrator." -ForegroundColor Yellow
         Write-Host ""
@@ -43,6 +43,21 @@ $prevProgress = $Global:ProgressPreference
 $Global:ProgressPreference = 'SilentlyContinue'
 
 try {
+    # --- Check for existing installation ---
+    if (Test-Path $targetFolder) {
+        Clear-Host
+        Write-Host "⚠️  Existing T7Patch folder found at: $targetFolder" -ForegroundColor Yellow
+        $response = Read-Host "Do you want to replace it with the latest version? (Y/N)"
+        if ($response.Trim().ToUpper() -eq 'Y') {
+            Write-Host "Removing old version..."
+            Remove-Item -LiteralPath $targetFolder -Recurse -Force -ErrorAction Stop
+        } else {
+            Write-Host "Keeping existing version. Exiting installer..."
+            Pause
+            exit
+        }
+    }
+
     Write-Host "Downloading: $url"
     Invoke-WebRequest -Uri $url -OutFile $tempZip -UseBasicParsing -ErrorAction Stop
 
@@ -59,14 +74,10 @@ try {
         $sourcePath = $tempExtract
     }
 
-    if (Test-Path $targetFolder) {
-        Write-Host "Existing target folder found at $targetFolder -- removing..."
-        Remove-Item -LiteralPath $targetFolder -Recurse -Force -ErrorAction Stop
-    }
-
     Write-Host "Moving files to Desktop folder: $targetFolder"
     Move-Item -LiteralPath $sourcePath -Destination $targetFolder -Force -ErrorAction Stop
 
+    # --- Find executable ---
     $exePath = Get-ChildItem -LiteralPath $targetFolder -Filter $exeNameWanted -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $exePath) {
         $exePath = Get-ChildItem -LiteralPath $targetFolder -Filter '*.exe' -Recurse -ErrorAction SilentlyContinue | Sort-Object Length -Descending | Select-Object -First 1
@@ -76,6 +87,7 @@ try {
         $exeFull = $exePath.FullName
         Write-Host "Executable found: $exeFull"
 
+        # --- Create desktop shortcut ---
         Write-Host "Creating shortcut on Desktop: $shortcutName"
         $ws = New-Object -ComObject WScript.Shell
         $lnkPath = Join-Path $desktop $shortcutName
@@ -86,6 +98,7 @@ try {
         $shortcut.Save()
         Write-Host "Shortcut created: $lnkPath"
 
+        # --- Add Defender exclusions ---
         Write-Host "Adding Microsoft Defender exclusions..."
         try {
             Add-MpPreference -ExclusionPath $targetFolder -ErrorAction Stop
@@ -104,6 +117,7 @@ try {
         Write-Warning "No executable found in extracted files."
     }
 
+    # --- Cleanup ---
     if (Test-Path $tempZip) { Remove-Item -LiteralPath $tempZip -Force -ErrorAction SilentlyContinue }
     if (Test-Path $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force -ErrorAction SilentlyContinue }
 

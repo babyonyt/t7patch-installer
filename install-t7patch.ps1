@@ -16,6 +16,10 @@ function Ensure-Admin {
     if (-not $current.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
         Clear-Host
         Write-Host ""
+        Write-Host "===============================" -ForegroundColor Cyan
+        Write-Host "      T7Patch Installer        " -ForegroundColor Cyan
+        Write-Host "===============================" -ForegroundColor Cyan
+        Write-Host ""
         Write-Host "⚠️  This script must be run as Administrator." -ForegroundColor Yellow
         Write-Host ""
         Write-Host "Right-click PowerShell and select 'Run as Administrator', then run this command again:" -ForegroundColor Cyan
@@ -43,14 +47,21 @@ $prevProgress = $Global:ProgressPreference
 $Global:ProgressPreference = 'SilentlyContinue'
 
 try {
+    # --- Banner ---
+    Clear-Host
+    Write-Host "===============================" -ForegroundColor Cyan
+    Write-Host "      T7Patch Installer        " -ForegroundColor Cyan
+    Write-Host "===============================" -ForegroundColor Cyan
+    Write-Host ""
+
     # --- Check for existing installation ---
-    if (Test-Path $targetFolder) {
-        Clear-Host
-        Write-Host "⚠️  Existing T7Patch folder found at: $targetFolder" -ForegroundColor Yellow
+    $existing = Get-ChildItem -Path $desktop -Directory | Where-Object { $_.Name -ieq 'T7Patch' }
+    if ($existing) {
+        Write-Host "⚠️  Existing T7Patch folder found at: $($existing.FullName)" -ForegroundColor Yellow
         $response = Read-Host "Do you want to replace it with the latest version? (Y/N)"
         if ($response.Trim().ToUpper() -eq 'Y') {
             Write-Host "Removing old version..."
-            Remove-Item -LiteralPath $targetFolder -Recurse -Force -ErrorAction Stop
+            Remove-Item -LiteralPath $existing.FullName -Recurse -Force -ErrorAction Stop
         } else {
             Write-Host "Keeping existing version. Exiting installer..."
             Pause

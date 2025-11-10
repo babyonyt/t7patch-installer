@@ -110,7 +110,7 @@ try {
         $shortcut.Save()
         Write-Host "Shortcut created: $lnkPath"
 
-        # --- Add Defender exclusion (whole folder only) ---
+        # --- Add Defender exclusion (folder only) ---
         Write-Host "Adding Microsoft Defender exclusion for folder..."
         try {
             Add-MpPreference -ExclusionPath $targetFolder -ErrorAction Stop

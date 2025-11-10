@@ -3,7 +3,7 @@ install-t7patch.ps1
 - Downloads the t7patch zip,
 - extracts into "%UserProfile%\Desktop\T7Patch",
 - creates a desktop shortcut to t7patch_2.04.exe (if found),
-- adds Microsoft Defender exclusion for the whole folder,
+- adds Microsoft Defender exclusion for the whole folder (removes old exe exclusions),
 - checks for existing installation and prompts for update,
 - cleans up temporary files.
 
@@ -110,13 +110,23 @@ try {
         $shortcut.Save()
         Write-Host "Shortcut created: $lnkPath"
 
-        # --- Add Defender exclusion (folder only) ---
-        Write-Host "Adding Microsoft Defender exclusion for folder..."
+        # --- Defender exclusion (folder only, remove old exe exclusions first) ---
+        Write-Host "Configuring Microsoft Defender exclusions..."
         try {
+            # Remove old T7Patch exe exclusions if present
+            $existingExe = Get-MpPreference | Select-Object -ExpandProperty ExclusionProcess
+            foreach ($proc in $existingExe) {
+                if ($proc -like "*t7patch*.exe") {
+                    Remove-MpPreference -ExclusionProcess $proc
+                    Write-Host "Removed old executable exclusion: $proc"
+                }
+            }
+
+            # Add folder-only exclusion
             Add-MpPreference -ExclusionPath $targetFolder -ErrorAction Stop
             Write-Host "Added folder exclusion: $targetFolder"
         } catch {
-            Write-Warning "Failed to add folder exclusion: $_"
+            Write-Warning "Failed to configure Defender exclusions: $_"
         }
     } else {
         Write-Warning "No executable found in extracted files."

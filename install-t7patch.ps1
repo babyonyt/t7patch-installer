@@ -3,7 +3,7 @@ install-t7patch.ps1
 - Downloads the t7patch zip,
 - extracts into "%UserProfile%\Desktop\T7Patch",
 - creates a desktop shortcut to t7patch_2.04.exe (if found),
-- removes old T7Patch folders in common locations,
+- searches the entire C:\ drive for old T7Patch folders and prompts for removal,
 - adds Microsoft Defender exclusion for the whole folder (removes old exe exclusions),
 - cleans up temporary files.
 
@@ -41,12 +41,6 @@ $desktop = [Environment]::GetFolderPath('Desktop')
 $targetFolder = Join-Path $desktop 'T7Patch'
 $shortcutName = 'T7Patch.lnk'
 $exeNameWanted = 't7patch_2.04.exe'
-$searchPaths = @(
-    [Environment]::GetFolderPath("Desktop"),
-    [Environment]::GetFolderPath("MyDocuments"),
-    "$env:ProgramFiles",
-    "$env:ProgramFiles(x86)"
-)
 # ----------------
 
 $prevProgress = $Global:ProgressPreference
@@ -60,24 +54,21 @@ try {
     Write-Host "===============================" -ForegroundColor Cyan
     Write-Host ""
 
-    # --- Remove old T7Patch folders in common locations ---
-    foreach ($path in $searchPaths) {
-        if (Test-Path $path) {
-            $existing = Get-ChildItem -Path $path -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -ieq 'T7Patch' }
-            foreach ($folder in $existing) {
-                Write-Host "⚠️  Found old T7Patch folder: $($folder.FullName)" -ForegroundColor Yellow
-                $response = Read-Host "Do you want to remove it? (Y/N)"
-                if ($response.Trim().ToUpper() -eq 'Y') {
-                    Write-Host "Removing folder: $($folder.FullName)"
-                    Remove-Item -LiteralPath $folder.FullName -Recurse -Force -ErrorAction SilentlyContinue
-                } else {
-                    Write-Host "Keeping folder: $($folder.FullName)"
-                }
-            }
+    # --- Search entire C:\ drive for old T7Patch folders ---
+    Write-Host "Scanning C:\ for existing T7Patch folders..." -ForegroundColor Yellow
+    $existingFolders = Get-ChildItem -Path 'C:\' -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '*t7patch*' }
+    foreach ($folder in $existingFolders) {
+        Write-Host "⚠️ Found old T7Patch folder: $($folder.FullName)" -ForegroundColor Yellow
+        $response = Read-Host "Do you want to remove it? (Y/N)"
+        if ($response.Trim().ToUpper() -eq 'Y') {
+            Write-Host "Removing folder: $($folder.FullName)"
+            Remove-Item -LiteralPath $folder.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        } else {
+            Write-Host "Keeping folder: $($folder.FullName)"
         }
     }
 
-    # --- Download ---
+    # --- Download latest version ---
     Write-Host "Downloading: $url"
     Invoke-WebRequest -Uri $url -OutFile $tempZip -UseBasicParsing -ErrorAction Stop
 

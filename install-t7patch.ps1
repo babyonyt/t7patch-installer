@@ -56,7 +56,9 @@ try {
 
     # --- Search entire C:\ drive for old T7Patch folders ---
     Write-Host "Scanning C:\ for existing T7Patch folders..." -ForegroundColor Yellow
-    $existingFolders = Get-ChildItem -Path 'C:\' -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '*t7patch*' }
+    $existingFolders = Get-ChildItem -Path 'C:\' -Directory -Recurse -ErrorAction SilentlyContinue |
+                       Where-Object { $_.Name -match '(?i)t7patch' }
+
     foreach ($folder in $existingFolders) {
         Write-Host "⚠️ Found old T7Patch folder: $($folder.FullName)" -ForegroundColor Yellow
         $response = Read-Host "Do you want to remove it? (Y/N)"
@@ -114,7 +116,7 @@ try {
         try {
             $existingExe = Get-MpPreference | Select-Object -ExpandProperty ExclusionProcess
             foreach ($proc in $existingExe) {
-                if ($proc -like "*t7patch*.exe") {
+                if ($proc -match '(?i)t7patch') {
                     Remove-MpPreference -ExclusionProcess $proc
                     Write-Host "Removed old executable exclusion: $proc"
                 }

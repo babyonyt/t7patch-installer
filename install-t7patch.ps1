@@ -1,4 +1,4 @@
-<# 
+<#
 install-t7patch.ps1
 - Downloads the t7patch zip,
 - extracts into "%UserProfile%\Desktop\T7Patch",
@@ -6,17 +6,21 @@ install-t7patch.ps1
 - adds Microsoft Defender exclusions for the folder and the exe,
 - cleans up temporary files.
 
-Run: Just run normally — it will auto-elevate if not admin.
+Usage:
+iex (iwr 'https://raw.githubusercontent.com/babyonyt/t7patch-installer/main/install-t7patch.ps1' -UseBasicParsing).Content
 #>
 
 function Ensure-Admin {
     $current = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $current.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
-        Write-Host "Requesting Administrator access..."
-        $ps = (Get-Command powershell).Source
-        $script = $MyInvocation.MyCommand.Definition
-        # Relaunch as admin and keep window open
-        Start-Process -FilePath $ps -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$script`"; Pause" -Verb RunAs
+        Write-Host ""
+        Write-Host "⚠️  This script must be run as Administrator." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Right-click PowerShell and select 'Run as Administrator', then run this command again:" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "iex (iwr 'https://raw.githubusercontent.com/babyonyt/t7patch-installer/main/install-t7patch.ps1' -UseBasicParsing).Content" -ForegroundColor Green
+        Write-Host ""
+        Pause
         exit
     }
 }
@@ -54,7 +58,7 @@ try {
     }
 
     if (Test-Path $targetFolder) {
-        Write-Host "Existing target folder found at $targetFolder — replacing..."
+        Write-Host "Existing target folder found at $targetFolder -- removing..."
         Remove-Item -LiteralPath $targetFolder -Recurse -Force -ErrorAction Stop
     }
 
@@ -70,7 +74,7 @@ try {
         $exeFull = $exePath.FullName
         Write-Host "Executable found: $exeFull"
 
-        Write-Host "Creating desktop shortcut..."
+        Write-Host "Creating shortcut on Desktop: $shortcutName"
         $ws = New-Object -ComObject WScript.Shell
         $lnkPath = Join-Path $desktop $shortcutName
         $shortcut = $ws.CreateShortcut($lnkPath)
@@ -83,16 +87,16 @@ try {
         Write-Host "Adding Microsoft Defender exclusions..."
         try {
             Add-MpPreference -ExclusionPath $targetFolder -ErrorAction Stop
-            Write-Host "Added folder exclusion."
+            Write-Host "Added folder exclusion: $targetFolder"
         } catch {
-            Write-Warning "Could not add folder exclusion: $_"
+            Write-Warning "Failed to add folder exclusion: $_"
         }
 
         try {
             Add-MpPreference -ExclusionProcess $exeFull -ErrorAction Stop
-            Write-Host "Added process exclusion."
+            Write-Host "Added process exclusion: $exeFull"
         } catch {
-            Write-Warning "Could not add process exclusion: $_"
+            Write-Warning "Failed to add process exclusion: $_"
         }
     } else {
         Write-Warning "No executable found in extracted files."
@@ -101,8 +105,10 @@ try {
     if (Test-Path $tempZip) { Remove-Item -LiteralPath $tempZip -Force -ErrorAction SilentlyContinue }
     if (Test-Path $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force -ErrorAction SilentlyContinue }
 
-    Write-Host "`nDone! Folder created at: $targetFolder"
-    if ($exePath) { Write-Host "Shortcut added on Desktop — you can now run T7Patch." }
+    Write-Host ""
+    Write-Host "✅ Done! Folder created at: $targetFolder"
+    if ($exePath) { Write-Host "Shortcut created on Desktop — you can run it to start t7patch." }
+    Write-Host ""
     Pause
 }
 catch {

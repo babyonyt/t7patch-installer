@@ -1,5 +1,5 @@
 # ===============================
-#       T7Patch Installer
+#       SAFE T7Patch Installer
 # ===============================
 
 # Ensure running as Admin
@@ -23,51 +23,48 @@ Write-Host "      T7Patch Installer"
 Write-Host "===============================" -ForegroundColor Cyan
 Write-Host ""
 
-# Variables
 $zipUrl = "https://github.com/shiversoftdev/t7patch/releases/download/Current/t7patch_2.04.Windows.Only.zip"
 $desktop = [Environment]::GetFolderPath("Desktop")
 $targetFolder = Join-Path $desktop "T7Patch"
 $tempZip = Join-Path $env:TEMP "t7patch.zip"
 $tempExtract = Join-Path $env:TEMP "t7patch_extract"
 
-# --- Check for existing T7Patch folders on Desktop and root of each drive ---
+# --- Check for existing T7Patch folders ---
 Write-Host "Checking for existing T7Patch folders..." -ForegroundColor Yellow
 $drives = Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root
-$searchPaths = @($desktop) + ($drives | ForEach-Object { Join-Path $_ "T7Patch" })
-$foundPaths = @()
-
-foreach ($path in $searchPaths) {
-    if (Test-Path $path) { $foundPaths += $path }
-}
+$searchPaths = @($targetFolder) + ($drives | ForEach-Object { Join-Path $_ "T7Patch" })
+$foundPaths = $searchPaths | Where-Object { Test-Path $_ }
 
 if ($foundPaths.Count -gt 0) {
-    Write-Host "⚠️  Existing T7Patch folder(s) found:" -ForegroundColor Yellow
+    Write-Host "⚠️  Found existing T7Patch folders:" -ForegroundColor Yellow
     $foundPaths | ForEach-Object { Write-Host " - $_" -ForegroundColor DarkYellow }
-    $response = Read-Host "Do you want to replace them with the latest version? (Y/N)"
+    $response = Read-Host "Replace them with the latest version? (Y/N)"
     if ($response -match '^[Yy]$') {
-        Write-Host "Removing old version(s)..."
         foreach ($path in $foundPaths) {
-            try { Remove-Item -Path $path -Recurse -Force -ErrorAction Stop } catch { Write-Host "Failed to remove: $path" -ForegroundColor Red }
+            try {
+                Write-Host "Removing: $path"
+                Remove-Item -Path $path -Recurse -Force -ErrorAction Stop
+            } catch {
+                Write-Host "Failed to remove: $path" -ForegroundColor Red
+            }
         }
     } else {
-        Write-Host "Keeping existing version(s). Exiting installer."
+        Write-Host "Installation cancelled by user."
         Read-Host "Press Enter to exit"
         exit
     }
-} else {
-    Write-Host "No existing T7Patch folders found." -ForegroundColor Green
 }
 
 # --- Download and Extract ---
-Write-Host "`nDownloading: $zipUrl" -ForegroundColor Cyan
+Write-Host "`nDownloading latest T7Patch..." -ForegroundColor Cyan
 Invoke-WebRequest -Uri $zipUrl -OutFile $tempZip -UseBasicParsing
 
-Write-Host "Extracting to temporary folder..."
+Write-Host "Extracting files..."
 Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
 
-Write-Host "Moving files to Desktop folder: $targetFolder"
-if (Test-Path $targetFolder) { Remove-Item -Recurse -Force $targetFolder }
-Move-Item -Path (Join-Path $tempExtract "*") -Destination $targetFolder
+Write-Host "Moving extracted files to Desktop..."
+New-Item -ItemType Directory -Path $targetFolder -Force | Out-Null
+Move-Item -Path (Join-Path $tempExtract "*") -Destination $targetFolder -Force
 
 # --- Create Shortcut ---
 $exePath = Get-ChildItem -Path $targetFolder -Filter "t7patch_*.exe" -Recurse | Select-Object -First 1
@@ -91,6 +88,6 @@ Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
 Remove-Item $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host "`n✅ Done! Folder created at: $targetFolder" -ForegroundColor Green
-Write-Host "Shortcut created on Desktop — you can run it to start t7patch."
+Write-Host "Shortcut created on Desktop — ready to launch T7Patch!"
 Write-Host ""
 Read-Host "Press Enter to exit"

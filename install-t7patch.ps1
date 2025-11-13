@@ -1,19 +1,18 @@
 <#
 T7Patch Installer — COOL CONSOLE EDITION
-Fixed for PowerShell 5.1 (No ternary operators)
+Checkmarks, spinners, progress bars, ASCII art
 #>
 
 function Ensure-Admin {
     $current = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $current.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
         Clear-Host
-        Write-Host " "
+        Write-Host " " 
         Write-Host "╔══════════════════════════════════════╗" -ForegroundColor Cyan
         Write-Host "║        T7PATCH INSTALLER         ║" -ForegroundColor Cyan
-        Write-Host "║           COOL EDITION            ║" -ForegroundColor Cyan
         Write-Host "╚══════════════════════════════════════╝" -ForegroundColor Cyan
         Write-Host " "
-        Write-Host "Administrator rights required!" -ForegroundColor Red
+        Write-Host "Cross: Administrator rights required!" -ForegroundColor Red
         Write-Host " "
         Write-Host "Right-click PowerShell → 'Run as Administrator'" -ForegroundColor Yellow
         Write-Host " "
@@ -35,16 +34,15 @@ $targetFolder = Join-Path $desktop 'T7Patch'
 $shortcutName = 'T7Patch.lnk'
 $exeNameWanted = 't7patch_2.04.exe'
 
-# --- Icons & Cool Stuff ---
-$check = 'Done!'
-$cross = 'Failed!'
+# --- Icons ---
+$check = 'Checkmark: Done!'
+$cross = 'Cross: Failed!'
 $spinner = @('⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷')
 $spinIndex = 0
 
 function Spin {
-    param([string]$msg)
-    $spin = $spinner[$script:spinIndex % $spinner.Length]
-    Write-Host "`r$spin $msg" -NoNewline -ForegroundColor Cyan
+    $spin = $spinner[$spinIndex % $spinner.Length]
+    Write-Host "`r $spin $args" -NoNewline -ForegroundColor Cyan
     $script:spinIndex++
     Start-Sleep -Milliseconds 100
 }
@@ -53,7 +51,7 @@ function Progress-Bar {
     param([int]$p, [string]$msg)
     $bar = '█' * ($p / 10)
     $empty = '░' * (10 - ($p / 10))
-    Write-Host "`r[$bar$empty] $p% $msg" -NoNewline -ForegroundColor Green
+    Write-Host "`r [$bar$empty] $p% $msg" -NoNewline -ForegroundColor Green
 }
 
 $prevProgress = $Global:ProgressPreference
@@ -61,10 +59,9 @@ $Global:ProgressPreference = 'SilentlyContinue'
 
 try {
     Clear-Host
-    Write-Host " "
+    Write-Host " " 
     Write-Host "╔══════════════════════════════════════╗" -ForegroundColor Cyan
     Write-Host "║        T7PATCH INSTALLER         ║" -ForegroundColor Cyan
-    Write-Host "║           COOL EDITION            ║" -ForegroundColor Cyan
     Write-Host "╚══════════════════════════════════════╝" -ForegroundColor Cyan
     Write-Host " "
 
@@ -82,8 +79,7 @@ try {
             @('Desktop', 'OneDrive\Desktop') | ForEach-Object {
                 $p = Join-Path $u.FullName $_
                 if (Test-Path $p) {
-                    $item = Get-Item $p -Force
-                    $real = if ($item.Target) { $item.Target } else { $p }
+                    $real = (Get-Item $p -Force).Target ? (Get-Item $p -Force).Target : $p
                     if ($real -notin $searchPaths) {
                         $searchPaths += $real
                         Write-Host "   Desktop: $real" -ForegroundColor DarkGray
@@ -92,6 +88,7 @@ try {
             }
         }
     }
+
     $t7folders = @()
     foreach ($path in $searchPaths) {
         try {
@@ -100,6 +97,7 @@ try {
         } catch {}
     }
     $t7folders = $t7folders | Sort-Object FullName -Unique
+
     if ($t7folders.Count -gt 0) {
         Write-Host " "
         foreach ($f in $t7folders) {
@@ -111,17 +109,16 @@ try {
                     Write-Host "$cross Cancelled." -ForegroundColor Red
                     Pause; exit
                 }
-                Spin "Removing old..."
+                Write-Host "Removing old..."
                 Remove-Item $f.FullName -Recurse -Force -ErrorAction SilentlyContinue
-                Write-Host "`r$check Old version removed!" -ForegroundColor Green
+                Write-Host "$check Old version removed!" -ForegroundColor Green
             } else {
                 Write-Host "Old T7Patch found:" -ForegroundColor Yellow
                 Write-Host "   $($f.FullName)" -ForegroundColor White
                 $ans = Read-Host " Remove? (Y/N)"
                 if ($ans.Trim().ToUpper() -eq 'Y') {
-                    Spin "Removing..."
                     Remove-Item $f.FullName -Recurse -Force -ErrorAction SilentlyContinue
-                    Write-Host "`r$check Removed!" -ForegroundColor Green
+                    Write-Host "$check Removed!" -ForegroundColor Green
                 } else {
                     Write-Host "   Kept." -ForegroundColor Gray
                 }
@@ -143,20 +140,19 @@ try {
 
     # === STEP 3: EXTRACT ===
     Write-Host "Extracting archive..."
-    Spin "Unzipping..."
     if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force }
     New-Item -ItemType Directory -Path $tempExtract | Out-Null
     Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force -ErrorAction Stop
-    Write-Host "`r$check Extracted!" -ForegroundColor Green
+    Write-Host "$check Extracted!" -ForegroundColor Green
+
     $items = Get-ChildItem $tempExtract
     $src = if ($items.Count -eq 1 -and $items[0].PSIsContainer) { $items[0].FullName } else { $tempExtract }
 
     # === STEP 4: INSTALL ===
     Write-Host "Installing to Desktop..."
-    Spin "Moving files..."
     if (Test-Path $targetFolder) { Remove-Item $targetFolder -Recurse -Force }
     Move-Item -LiteralPath $src -Destination $targetFolder -Force -ErrorAction Stop
-    Write-Host "`r$check Installed!" -ForegroundColor Green
+    Write-Host "$check Installed!" -ForegroundColor Green
     Write-Host "   $targetFolder" -ForegroundColor White
 
     # === STEP 5: EXE ===
@@ -167,9 +163,9 @@ try {
     if ($exe) {
         Write-Host "$check EXE ready!" -ForegroundColor Green
         Write-Host "   $($exe.FullName)" -ForegroundColor White
+
         # === SHORTCUT ===
         Write-Host "Creating shortcut..."
-        Spin "Building link..."
         $ws = New-Object -ComObject WScript.Shell
         $lnk = Join-Path $desktop $shortcutName
         if (Test-Path $lnk) { Remove-Item $lnk -Force }
@@ -178,19 +174,19 @@ try {
         $s.WorkingDirectory = $exe.DirectoryName
         $s.IconLocation = "$($exe.FullName),0"
         $s.Save()
-        Write-Host "`r$check Shortcut created!" -ForegroundColor Green
+        Write-Host "$check Shortcut created!" -ForegroundColor Green
+
         # === DEFENDER ===
         Write-Host "Excluding from Defender..."
-        Spin "Setting exclusion..."
         try {
             Get-MpPreference | Select-Object -ExpandProperty ExclusionProcess -ErrorAction SilentlyContinue |
                 Where-Object { $_ -match '(?i)t7patch' } | ForEach-Object {
                     Remove-MpPreference -ExclusionProcess $_ -ErrorAction SilentlyContinue
                 }
             Add-MpPreference -ExclusionPath $targetFolder -ErrorAction Stop
-            Write-Host "`r$check Folder excluded!" -ForegroundColor Green
+            Write-Host "$check Folder excluded!" -ForegroundColor Green
         } catch {
-            Write-Host "`r$cross Defender failed (Admin?)" -ForegroundColor Red
+            Write-Host "$cross Defender failed (Admin?)" -ForegroundColor Red
         }
     } else {
         Write-Host "$cross No .exe found!" -ForegroundColor Red
@@ -198,20 +194,18 @@ try {
 
     # === CLEANUP ===
     Write-Host "Cleaning up..."
-    Spin "Deleting temps..."
     if (Test-Path $tempZip) { Remove-Item $tempZip -Force }
     if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force }
-    Write-Host "`r$check Cleanup done!" -ForegroundColor Green
+    Write-Host "$check Cleanup done!" -ForegroundColor Green
 
     # === FINAL ===
     Write-Host " "
     Write-Host "╔══════════════════════════════════════╗" -ForegroundColor Cyan
     Write-Host "║       INSTALLATION COMPLETE!       ║" -ForegroundColor Cyan
-    Write-Host "║             T7PATCH READY           ║" -ForegroundColor Cyan
     Write-Host "╚══════════════════════════════════════╝" -ForegroundColor Cyan
     Write-Host " "
-    Write-Host "   Folder: $targetFolder" -ForegroundColor Green
-    Write-Host "   Launch: Double-click $shortcutName" -ForegroundColor Green
+    Write-Host "   T7Patch is ready!" -ForegroundColor Green
+    Write-Host "   Double-click: $shortcutName" -ForegroundColor White
     Write-Host " "
     Write-Host "   Press Enter to exit..." -ForegroundColor DarkGray
     Read-Host

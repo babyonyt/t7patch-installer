@@ -1,10 +1,13 @@
 <#
 install-t7patch.ps1
 - Downloads the t7patch zip,
-- extracts into "%UserProfile%\Desktop\T7Patch",
+- extracts into current user's Desktop\T7Patch,
 - creates a desktop shortcut to t7patch_2.04.exe (if found),
-- searches ROOT of all fixed drives + ALL user Desktops for old T7Patch folders and prompts for removal,
-- adds Microsoft Defender exclusion for the whole folder (removes old exe exclusions),
+- searches:
+    • Root of all fixed drives (C:\, D:\, etc.)
+    • All user Desktops (including OneDrive-synced ones)
+- prompts to remove old T7Patch folders,
+- adds Microsoft Defender exclusion for the whole folder,
 - cleans up temporary files.
 Usage:
 iex (iwr 'https://raw.githubusercontent.com/babyonyt/t7patch-installer/main/install-t7patch.ps1' -UseBasicParsing).Content
@@ -35,7 +38,7 @@ Ensure-Admin
 $url = 'https://github.com/shiversoftdev/t7patch/releases/download/Current/t7patch_2.04.Windows.Only.zip'
 $tempZip = Join-Path $env:TEMP 't7patch_download.zip'
 $tempExtract = Join-Path $env:TEMP ('t7patch_extract_{0}' -f ([guid]::NewGuid().ToString()))
-$desktop = [Environment]::GetFolderPath('Desktop')
+$desktop = [Environment]::GetFolderPath('Desktop')  # Current user's Desktop
 $targetFolder = Join-Path $desktop 'T7Patch'
 $shortcutName = 'T7Patch.lnk'
 $exeNameWanted = 't7patch_2.04.exe'
@@ -52,43 +55,61 @@ try {
     Write-Host "===============================" -ForegroundColor Cyan
     Write-Host ""
 
-    # --- Search for old T7Patch folders: Roots of fixed drives + All User Desktops ---
-    Write-Host "Scanning drive roots and all user Desktops for old T7Patch folders..." -ForegroundColor Yellow
-
+    # --- Search for old T7Patch folders: Roots + All Desktops (incl. OneDrive) ---
+    Write-Host "Scanning for old T7Patch folders..." -ForegroundColor Yellow
     $searchPaths = @()
 
     # 1. Add root of all fixed drives
     $fixedDrives = Get-WmiObject Win32_LogicalDisk -Filter "DriveType=3" | Select-Object -ExpandProperty DeviceID
     foreach ($drive in $fixedDrives) {
         $searchPaths += $drive
+        Write-Host "  [Scan] $drive" -ForegroundColor DarkGray
     }
 
-    # 2. Add all user Desktops (C:\Users\*\Desktop)
-    $userProfiles = Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue
-    foreach ($user in $userProfiles) {
-        $userDesktop = Join-Path $user.FullName 'Desktop'
-        if (Test-Path $userDesktop) {
-            $searchPaths += $userDesktop
+    # 2. Add all user Desktops (classic + OneDrive)
+    if (Test-Path 'C:\Users') {
+        $userProfiles = Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue
+        foreach ($user in $userProfiles) {
+            $possibleDesktops = @(
+                Join-Path $user.FullName 'Desktop'
+                Join-Path $user.FullName 'OneDrive\Desktop'
+            )
+            foreach ($deskPath in $possibleDesktops) {
+                if (Test-Path $deskPath -ErrorAction SilentlyContinue) {
+                    # Resolve symlink/junction
+                    $item = Get-Item $deskPath -Force -ErrorAction SilentlyContinue
+                    $realPath = if ($item.Target) { $item.Target } else { $item.FullName }
+                    if ($realPath -notin $searchPaths) {
+                        $searchPaths += $realPath
+                        Write-Host "  [Scan] $realPath" -ForegroundColor DarkGray
+                    }
+                }
+            }
         }
     }
 
+    # --- Find and prompt to remove old T7Patch folders ---
     $existingFolders = @()
     foreach ($path in $searchPaths) {
         try {
-            $folder = Get-ChildItem -Path $path -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)^t7patch$' }
-            if ($folder) { $existingFolders += $folder }
+            $folders = Get-ChildItem -Path $path -Directory -ErrorAction SilentlyContinue |
+                       Where-Object { $_.Name -match '(?i)^t7patch$' }
+            foreach ($f in $folders) {
+                if ($f.FullName -ne $targetFolder) {
+                    $existingFolders += $f
+                }
+            }
         } catch { }
     }
 
     foreach ($folder in $existingFolders) {
-        if ($folder.FullName -eq $targetFolder) { continue }  # Skip the one we're about to create
         Write-Host "Warning: Found old T7Patch folder: $($folder.FullName)" -ForegroundColor Yellow
         $response = Read-Host "Do you want to remove it? (Y/N)"
         if ($response.Trim().ToUpper() -eq 'Y') {
-            Write-Host "Removing folder: $($folder.FullName)"
+            Write-Host "Removing: $($folder.FullName)"
             Remove-Item -LiteralPath $folder.FullName -Recurse -Force -ErrorAction SilentlyContinue
         } else {
-            Write-Host "Keeping folder: $($folder.FullName)"
+            Write-Host "Keeping: $($folder.FullName)"
         }
     }
 
@@ -103,13 +124,10 @@ try {
     Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force -ErrorAction Stop
 
     $items = Get-ChildItem -LiteralPath $tempExtract
-    if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
-        $sourcePath = $items[0].FullName
-    } else {
-        $sourcePath = $tempExtract
-    }
+    $sourcePath = if ($items.Count -eq 1 -and $items[0].PSIsContainer) { $items[0].FullName } else { $tempExtract }
 
-    Write-Host "Moving files to Desktop folder: $targetFolder"
+    # --- Move to final location ---
+    Write-Host "Installing to: $targetFolder"
     if (Test-Path $targetFolder) {
         Remove-Item -LiteralPath $targetFolder -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -126,7 +144,7 @@ try {
         Write-Host "Executable found: $exeFull"
 
         # --- Create desktop shortcut ---
-        Write-Host "Creating shortcut on Desktop: $shortcutName"
+        Write-Host "Creating shortcut: $shortcutName"
         $ws = New-Object -ComObject WScript.Shell
         $lnkPath = Join-Path $desktop $shortcutName
         if (Test-Path $lnkPath) { Remove-Item $lnkPath -Force }
@@ -137,7 +155,7 @@ try {
         $shortcut.Save()
         Write-Host "Shortcut created: $lnkPath"
 
-        # --- Defender exclusion (folder only, remove old exe exclusions first) ---
+        # --- Defender exclusion ---
         Write-Host "Configuring Microsoft Defender exclusions..."
         try {
             $existingExe = Get-MpPreference | Select-Object -ExpandProperty ExclusionProcess -ErrorAction SilentlyContinue
@@ -145,17 +163,17 @@ try {
                 foreach ($proc in $existingExe) {
                     if ($proc -match '(?i)t7patch') {
                         Remove-MpPreference -ExclusionProcess $proc -ErrorAction SilentlyContinue
-                        Write-Host "Removed old executable exclusion: $proc"
+                        Write-Host "Removed old exclusion: $proc"
                     }
                 }
             }
             Add-MpPreference -ExclusionPath $targetFolder -ErrorAction Stop
             Write-Host "Added folder exclusion: $targetFolder"
         } catch {
-            Write-Warning "Failed to configure Defender exclusions: $_"
+            Write-Warning "Defender exclusion failed: $_"
         }
     } else {
-        Write-Warning "No executable found in extracted files."
+        Write-Warning "No .exe found in extracted files."
     }
 
     # --- Cleanup ---
@@ -163,13 +181,14 @@ try {
     if (Test-Path $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force -ErrorAction SilentlyContinue }
 
     Write-Host ""
-    Write-Host "Done! Folder created at: $targetFolder"
-    if ($exePath) { Write-Host "Shortcut created on Desktop — you can run it to start t7patch." }
+    Write-Host "Done! T7Patch installed to:" -ForegroundColor Green
+    Write-Host "   $targetFolder"
+    if ($exePath) { Write-Host "   Shortcut on Desktop: $shortcutName" }
     Write-Host ""
     Pause
 }
 catch {
-    Write-Error "Error: $_"
+    Write-Error "Installation failed: $_"
     Pause
 }
 finally {

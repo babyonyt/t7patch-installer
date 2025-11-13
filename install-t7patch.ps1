@@ -3,10 +3,9 @@ install-t7patch.ps1
 - Downloads the t7patch zip,
 - extracts into "%UserProfile%\Desktop\T7Patch",
 - creates a desktop shortcut to t7patch_2.04.exe (if found),
-- searches the entire C:\ drive for old T7Patch folders and prompts for removal,
+- searches ROOT of all fixed drives + ALL user Desktops for old T7Patch folders and prompts for removal,
 - adds Microsoft Defender exclusion for the whole folder (removes old exe exclusions),
 - cleans up temporary files.
-
 Usage:
 iex (iwr 'https://raw.githubusercontent.com/babyonyt/t7patch-installer/main/install-t7patch.ps1' -UseBasicParsing).Content
 #>
@@ -17,10 +16,10 @@ function Ensure-Admin {
         Clear-Host
         Write-Host ""
         Write-Host "===============================" -ForegroundColor Cyan
-        Write-Host "      T7Patch Installer        " -ForegroundColor Cyan
+        Write-Host " T7Patch Installer " -ForegroundColor Cyan
         Write-Host "===============================" -ForegroundColor Cyan
         Write-Host ""
-        Write-Host "⚠️  This script must be run as Administrator." -ForegroundColor Yellow
+        Write-Host "Warning: This script must be run as Administrator." -ForegroundColor Yellow
         Write-Host ""
         Write-Host "Right-click PowerShell and select 'Run as Administrator', then run this command again:" -ForegroundColor Cyan
         Write-Host ""
@@ -30,7 +29,6 @@ function Ensure-Admin {
         exit
     }
 }
-
 Ensure-Admin
 
 # --- Config ---
@@ -50,17 +48,41 @@ try {
     # --- Banner ---
     Clear-Host
     Write-Host "===============================" -ForegroundColor Cyan
-    Write-Host "      T7Patch Installer        " -ForegroundColor Cyan
+    Write-Host " T7Patch Installer " -ForegroundColor Cyan
     Write-Host "===============================" -ForegroundColor Cyan
     Write-Host ""
 
-    # --- Search entire C:\ drive for old T7Patch folders ---
-    Write-Host "Scanning C:\ for existing T7Patch folders..." -ForegroundColor Yellow
-    $existingFolders = Get-ChildItem -Path 'C:\' -Directory -Recurse -ErrorAction SilentlyContinue |
-                       Where-Object { $_.Name -match '(?i)t7patch' }
+    # --- Search for old T7Patch folders: Roots of fixed drives + All User Desktops ---
+    Write-Host "Scanning drive roots and all user Desktops for old T7Patch folders..." -ForegroundColor Yellow
+
+    $searchPaths = @()
+
+    # 1. Add root of all fixed drives
+    $fixedDrives = Get-WmiObject Win32_LogicalDisk -Filter "DriveType=3" | Select-Object -ExpandProperty DeviceID
+    foreach ($drive in $fixedDrives) {
+        $searchPaths += $drive
+    }
+
+    # 2. Add all user Desktops (C:\Users\*\Desktop)
+    $userProfiles = Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue
+    foreach ($user in $userProfiles) {
+        $userDesktop = Join-Path $user.FullName 'Desktop'
+        if (Test-Path $userDesktop) {
+            $searchPaths += $userDesktop
+        }
+    }
+
+    $existingFolders = @()
+    foreach ($path in $searchPaths) {
+        try {
+            $folder = Get-ChildItem -Path $path -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)^t7patch$' }
+            if ($folder) { $existingFolders += $folder }
+        } catch { }
+    }
 
     foreach ($folder in $existingFolders) {
-        Write-Host "⚠️ Found old T7Patch folder: $($folder.FullName)" -ForegroundColor Yellow
+        if ($folder.FullName -eq $targetFolder) { continue }  # Skip the one we're about to create
+        Write-Host "Warning: Found old T7Patch folder: $($folder.FullName)" -ForegroundColor Yellow
         $response = Read-Host "Do you want to remove it? (Y/N)"
         if ($response.Trim().ToUpper() -eq 'Y') {
             Write-Host "Removing folder: $($folder.FullName)"
@@ -88,6 +110,9 @@ try {
     }
 
     Write-Host "Moving files to Desktop folder: $targetFolder"
+    if (Test-Path $targetFolder) {
+        Remove-Item -LiteralPath $targetFolder -Recurse -Force -ErrorAction SilentlyContinue
+    }
     Move-Item -LiteralPath $sourcePath -Destination $targetFolder -Force -ErrorAction Stop
 
     # --- Find executable ---
@@ -104,6 +129,7 @@ try {
         Write-Host "Creating shortcut on Desktop: $shortcutName"
         $ws = New-Object -ComObject WScript.Shell
         $lnkPath = Join-Path $desktop $shortcutName
+        if (Test-Path $lnkPath) { Remove-Item $lnkPath -Force }
         $shortcut = $ws.CreateShortcut($lnkPath)
         $shortcut.TargetPath = $exeFull
         $shortcut.WorkingDirectory = Split-Path -Parent $exeFull
@@ -114,14 +140,15 @@ try {
         # --- Defender exclusion (folder only, remove old exe exclusions first) ---
         Write-Host "Configuring Microsoft Defender exclusions..."
         try {
-            $existingExe = Get-MpPreference | Select-Object -ExpandProperty ExclusionProcess
-            foreach ($proc in $existingExe) {
-                if ($proc -match '(?i)t7patch') {
-                    Remove-MpPreference -ExclusionProcess $proc
-                    Write-Host "Removed old executable exclusion: $proc"
+            $existingExe = Get-MpPreference | Select-Object -ExpandProperty ExclusionProcess -ErrorAction SilentlyContinue
+            if ($existingExe) {
+                foreach ($proc in $existingExe) {
+                    if ($proc -match '(?i)t7patch') {
+                        Remove-MpPreference -ExclusionProcess $proc -ErrorAction SilentlyContinue
+                        Write-Host "Removed old executable exclusion: $proc"
+                    }
                 }
             }
-
             Add-MpPreference -ExclusionPath $targetFolder -ErrorAction Stop
             Write-Host "Added folder exclusion: $targetFolder"
         } catch {
@@ -136,7 +163,7 @@ try {
     if (Test-Path $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force -ErrorAction SilentlyContinue }
 
     Write-Host ""
-    Write-Host "✅ Done! Folder created at: $targetFolder"
+    Write-Host "Done! Folder created at: $targetFolder"
     if ($exePath) { Write-Host "Shortcut created on Desktop — you can run it to start t7patch." }
     Write-Host ""
     Pause
